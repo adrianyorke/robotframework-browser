@@ -21,6 +21,7 @@ from ..base import LibraryComponent
 from ..generated.playwright_pb2 import Request
 from ..utils import (
     ColorScheme,
+    SelectionType,
     SupportedBrowsers,
     ViewportDimensions,
     locals_to_params,
@@ -366,29 +367,68 @@ class PlaywrightState(LibraryComponent):
         Page: ``{type: 'page', 'id': int, title: str, url: str}``
 
         Sample:
-        | [{
+        | [
+        |   {
+        |     "type": "chromium",
+        |     "id": "fc85f3ad-37f1-42a6-a1da-33f9a1e8a7ff",
+        |     "contexts": [
+        |       {
+        |         "type": "context",
+        |         "id": "3f0e25ac-c06f-49c5-bb3a-6daac5e1cc57",
+        |         "pages": [
+        |           {
+        |             "type": "page",
+        |             "title": "GitHub - MarketSquare/robotframework-browser: Robot Framework Browser library powered by Playwright.",
+        |             "url": "https://github.com/MarketSquare/robotframework-browser",
+        |             "id": "6f4321b9-d719-4057-9db4-1d566b8ca033"
+        |           },
+        |           {
+        |             "type": "page",
+        |             "title": "Playwright",
+        |             "url": "https://playwright.dev/",
+        |             "id": "a781b458-5af5-4563-868c-d70264d83c68"
+        |           }
+        |         ]
+        |       },
+        |       {
+        |         "type": "context",
+        |         "id": "46988048-e80e-4163-aa88-1093bd626135",
+        |         "pages": [
+        |           {
+        |             "type": "page",
+        |             "title": "RoboCon 2020",
+        |             "url": "https://robocon.io/",
+        |             "id": "c76c4807-febb-4cfc-94fb-82ab2df42797"
+        |           }
+        |         ]
+        |       }
+        |     ],
+        |     "activePage": "c76c4807-febb-4cfc-94fb-82ab2df42797",
+        |     "activeContext": "46988048-e80e-4163-aa88-1093bd626135",
+        |     "activeBrowser": false
+        |   },
+        |   {
         |     "type": "firefox",
-        |     "id": 0,
-        |     "contexts": [{
+        |     "id": "9ef54b22-493d-4f74-bcd9-437a43026661",
+        |     "contexts": [
+        |       {
         |         "type": "context",
-        |         "id": 0,
-        |         "pages": [{
+        |         "id": "4467995e-eb06-4194-ab9e-0fb6b42af2cc",
+        |         "pages": [
+        |           {
         |             "type": "page",
-        |             "title": "prefilled_email_form.html",
-        |             "url": "http://localhost:7272/prefilled_email_form.html",
-        |             "id": "0"
-        |         }]
-        |     }, {
-        |         "type": "context",
-        |         "id": 1,
-        |         "pages": [{
-        |             "type": "page",
-        |             "title": "Login Page",
-        |             "url": "http://localhost:7272/dist/",
-        |             "id": "0"
-        |         }]
-        |     }]
-        | }]
+        |             "title": "RoboCon 2020",
+        |             "url": "https://robocon.io/",
+        |             "id": "5cb903ea-77dd-428b-a2a4-ac2c8755e3dc"
+        |           }
+        |         ]
+        |       }
+        |     ],
+        |     "activePage": "5cb903ea-77dd-428b-a2a4-ac2c8755e3dc",
+        |     "activeContext": "4467995e-eb06-4194-ab9e-0fb6b42af2cc",
+        |     "activeBrowser": true
+        |   }
+        | ]
 
         """
         with self.playwright.grpc_channel() as stub:
@@ -421,7 +461,7 @@ class PlaywrightState(LibraryComponent):
         If ALL is passed, the contexts of the browser will be closed.
         """
         with self.playwright.grpc_channel() as stub:
-            if browser == "ALL":
+            if browser.upper() == "ALL":
                 raise NotImplementedError
             self._correct_browser(browser)
             response = stub.SwitchContext(Request().Index(index=id))
@@ -445,9 +485,9 @@ class PlaywrightState(LibraryComponent):
         If ALL is passed, the page of all browsers depending on the context switch.
         """
         with self.playwright.grpc_channel() as stub:
-            if context == "ALL":
+            if context.upper() == "ALL":
                 raise NotImplementedError
-            if browser == "ALL":
+            if browser.upper() == "ALL":
                 raise NotImplementedError
 
             self._correct_browser(browser)
@@ -455,3 +495,140 @@ class PlaywrightState(LibraryComponent):
             response = stub.SwitchPage(Request().Index(index=id))
             logger.info(response.log)
             return response.body
+
+    @keyword
+    def get_browser_ids(self, browser: SelectionType = SelectionType.ALL):
+        """Returns a list of ids from open browsers.
+
+        ``browser`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` Returns all ids as a list.
+        - ``ACTIVE`` Returns the id of the active browser.
+        """
+        if browser == SelectionType.ACTIVE:
+            browser_item = self._get_active_browser_item()
+            return browser_item["id"]
+        else:
+            return [browser["id"] for browser in self.get_browser_catalog()]
+
+    @keyword
+    def get_context_ids(
+        self,
+        context: SelectionType = SelectionType.ALL,
+        browser: SelectionType = SelectionType.ALL,
+    ):
+        """Returns a list of context ids based on the browser selection.
+
+        ``context`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` Returns all context ids as a list.
+        - ``ACTIVE`` Returns the id of the active context.
+
+        ``browser`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` context ids from all open browsers shall be fetched.
+        - ``ACTIVE`` only context ids from the active browser shall be fetched.
+        """
+        if browser == SelectionType.ACTIVE:
+            browser_item = self._get_active_browser_item()
+            if context == SelectionType.ACTIVE:
+                return browser_item["activeContext"]
+            else:
+                return [context["id"] for context in browser_item["contexts"]]
+        else:
+            if context == SelectionType.ACTIVE:
+                context_ids = list()
+                for browser_item in self.get_browser_catalog():
+                    context_ids.append(browser_item["activeContext"])
+                return context_ids
+            else:
+                context_ids = list()
+                for browser_item in self.get_browser_catalog():
+                    for context_item in browser_item["contexts"]:
+                        context_ids.append(context_item["id"])
+                return context_ids
+
+    @keyword
+    def get_page_ids(
+        self,
+        page: SelectionType = SelectionType.ALL,
+        context: SelectionType = SelectionType.ALL,
+        browser: SelectionType = SelectionType.ALL,
+    ):
+        """Returns a list of page ids based on the context and browser selection.
+
+        ``page`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` Returns all page ids as a list.
+        - ``ACTIVE`` Returns the id of the active page **NOT IMPLEMENTED**.
+
+        ``context`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` page ids from all contexts shall be fetched.
+        - ``ACTIVE`` only page ids from the active context shall be fetched.
+
+        ``browser`` < ``ALL`` | ``ACTIVE`` >
+        - ``ALL`` page ids from all open browsers shall be fetched.
+        - ``ACTIVE`` only page ids from the active browser shall be fetched.
+        """
+        if browser == SelectionType.ACTIVE:
+            browser_item = self._get_active_browser_item()
+            if context == SelectionType.ACTIVE:
+                context_item = self._get_active_context_item(browser_item)
+                return self._get_page_ids_from_context(page, context_item)
+            else:
+                page_ids = list()
+                for context_item in browser_item["contexts"]:
+                    if page == SelectionType.ACTIVE:
+                        page_ids.append(
+                            self._get_page_ids_from_context(page, context_item)
+                        )
+                    else:
+                        page_ids.extend(
+                            self._get_page_ids_from_context(page, context_item)
+                        )
+                return page_ids
+        else:
+            if context == SelectionType.ACTIVE:
+                page_ids = list()
+                for browser_item in self.get_browser_catalog():
+                    context_item = self._get_active_context_item(browser_item)
+                    if page == SelectionType.ACTIVE:
+                        page_ids.append(
+                            self._get_page_ids_from_context(page, context_item)
+                        )
+                    else:
+                        page_ids.extend(
+                            self._get_page_ids_from_context(page, context_item)
+                        )
+                return page_ids
+            else:
+                page_ids = list()
+                for browser_item in self.get_browser_catalog():
+                    for context_item in browser_item["contexts"]:
+                        if page == SelectionType.ACTIVE:
+                            page_ids.append(
+                                self._get_page_ids_from_context(page, context_item)
+                            )
+                        else:
+                            page_ids.extend(
+                                self._get_page_ids_from_context(page, context_item)
+                            )
+                return page_ids
+
+    def _get_page_ids_from_context(
+        self, selection_type: SelectionType, context_item: dict
+    ):
+        if selection_type == SelectionType.ACTIVE:
+            raise NotImplementedError(
+                "Here is a Bug. Congrats you found it..."
+            )  # FixMe: this activePage is at the wrong place
+            return context_item["activePage"]
+        else:
+            return [page["id"] for page in context_item["pages"]]
+
+    def _get_active_browser_item(self):
+        browser_catalog = self.get_browser_catalog()
+        for browser in browser_catalog:
+            if browser["activeBrowser"]:
+                return browser
+
+    def _get_active_context_item(self, browser_item):
+        for context in browser_item["contexts"]:
+            if browser_item["activeContext"] == context["id"]:
+                return context

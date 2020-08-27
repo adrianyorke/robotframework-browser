@@ -31,6 +31,12 @@ MouseOptionsDict = TypedDict(
 ViewportDimensions = TypedDict("ViewportDimensions", {"width": int, "height": int})
 
 
+class SelectionType(Enum):
+    ACTIVE = auto()
+    ALL = auto()
+    ANY = auto()
+
+
 class AlertAction(Enum):
     accept = auto()
     dismiss = auto()
